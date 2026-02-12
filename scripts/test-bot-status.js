@@ -9,9 +9,11 @@ const BotStatus = require("../models/BotStatus");
 async function createDefaultBotStatus() {
   try {
     // Connect to MongoDB
-    await mongoose.connect(
-      process.env.MONGODB_URI || "mongodb://localhost:27017/automationBot",
-    );
+    const mongoUri =
+      process.env.MONGO_URI ||
+      process.env.MONGODB_URI ||
+      "mongodb://localhost:27017/automationBot";
+    await mongoose.connect(mongoUri);
     console.log("✅ Connected to MongoDB");
 
     // Create default bot status

@@ -2,10 +2,15 @@ const mongoose = require("mongoose");
 const BotStatus = require("../models/BotStatus");
 const BotStatusService = require("../services/BotStatusService");
 
+// Load environment variables
+require("dotenv").config();
+
 // Database connection
 const connectDB = async () => {
   try {
-    await mongoose.connect("mongodb://localhost:27017/automationBot", {
+    const mongoUri =
+      process.env.MONGO_URI || "mongodb://localhost:27017/automationBot";
+    await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });

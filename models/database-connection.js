@@ -8,9 +8,10 @@ const mongoose = require("mongoose");
 
 class DatabaseConnection {
   constructor() {
-    this.mongoUri =
-      process.env.AUTOMATION_MONGO_URI || "mongodb://localhost:27017";
-    this.mongoDbName = process.env.AUTOMATION_DB_NAME || "automationBot";
+    // Use MONGO_URI first (MongoDB Atlas), then fallback to separate URI and DB name
+    this.fullMongoUri =
+      process.env.MONGO_URI ||
+      `${process.env.AUTOMATION_MONGO_URI || "mongodb://localhost:27017"}/${process.env.AUTOMATION_DB_NAME || "automationBot"}`;
     this.isConnected = false;
   }
 
@@ -19,18 +20,15 @@ class DatabaseConnection {
    */
   async connect() {
     try {
-      console.log(
-        `🔗 Connecting to MongoDB: ${this.mongoUri}/${this.mongoDbName}`,
-      );
+      console.log(`🔗 Connecting to MongoDB: ${this.fullMongoUri}`);
 
-      await mongoose.connect(`${this.mongoUri}/${this.mongoDbName}`, {
+      await mongoose.connect(this.fullMongoUri, {
         serverSelectionTimeoutMS: 5000,
         connectTimeoutMS: 10000,
       });
 
       this.isConnected = true;
       console.log(`✅ Connected to MongoDB successfully`);
-      console.log(`📊 Database: ${this.mongoDbName}`);
 
       // Handle connection events
       mongoose.connection.on("error", (err) => {
