@@ -242,8 +242,8 @@ app.options("*", (req, res) => {
 
 // Public routes - simplified for testing
 app.use("/api/auth", authRoutes);
-app.use("/api/bot", botRoutes);
-app.use("/api/bot-status", botStatusRoutes);
+app.use("/api/bot", authMiddleware, licenseMiddleware, botRoutes);
+app.use("/api/bot-status", authMiddleware, botStatusRoutes);
 app.use("/api/license", authMiddleware, licenseMiddleware, licenseRoutes);
 app.use("/api/settings", settingsRoutes); // Removed auth and license middleware for testing
 app.use("/api/analytics", authMiddleware, analyticsRoutes);

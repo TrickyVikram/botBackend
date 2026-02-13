@@ -5,7 +5,21 @@ const BotStatusService = require("../services/BotStatusService");
 // Get bot status
 router.get("/status/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent accessing other users' data
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only view your own bot status",
+      });
+    }
+
     const result = await BotStatusService.getBotStatus(userId);
 
     if (result.success) {
@@ -33,7 +47,21 @@ router.get("/status/:userId?", async (req, res) => {
 // Start bot
 router.post("/start/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent controlling other users' bots
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only control your own bot",
+      });
+    }
+
     const status = await BotStatusService.startBot(userId);
 
     res.json({
@@ -54,7 +82,21 @@ router.post("/start/:userId?", async (req, res) => {
 // Stop bot
 router.post("/stop/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent controlling other users' bots
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only control your own bot",
+      });
+    }
+
     const { errorMessage } = req.body;
     const status = await BotStatusService.stopBot(userId, errorMessage);
 
@@ -76,7 +118,21 @@ router.post("/stop/:userId?", async (req, res) => {
 // Pause bot
 router.post("/pause/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent controlling other users' bots
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only control your own bot",
+      });
+    }
+
     const status = await BotStatusService.pauseBot(userId);
 
     res.json({
@@ -97,7 +153,21 @@ router.post("/pause/:userId?", async (req, res) => {
 // Resume bot
 router.post("/resume/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent controlling other users' bots
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only control your own bot",
+      });
+    }
+
     const status = await BotStatusService.resumeBot(userId);
 
     res.json({
@@ -118,7 +188,21 @@ router.post("/resume/:userId?", async (req, res) => {
 // Update connections
 router.post("/connections/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent updating other users' data
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only update your own bot data",
+      });
+    }
+
     const { todayCount, totalCount } = req.body;
 
     if (typeof todayCount !== "number" || typeof totalCount !== "number") {
@@ -143,7 +227,7 @@ router.post("/connections/:userId?", async (req, res) => {
     console.error("❌ Error in update connections route:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update connections",
+      message: "Failed to update connection counts",
       error: error.message,
     });
   }
@@ -152,7 +236,21 @@ router.post("/connections/:userId?", async (req, res) => {
 // Update current task
 router.post("/task/:userId?", async (req, res) => {
   try {
-    const userId = req.params.userId || "default";
+    // Get authenticated user's ID
+    const authenticatedUserId = req.user?.userId;
+    const requestedUserId = req.params.userId;
+    
+    // Use authenticated user's ID, ignore parameter for security
+    const userId = authenticatedUserId || requestedUserId || "default";
+    
+    // Prevent updating other users' data
+    if (requestedUserId && requestedUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Can only update your own bot data",
+      });
+    }
+
     const { task } = req.body;
 
     const status = await BotStatusService.updateCurrentTask(userId, task);
@@ -172,9 +270,18 @@ router.post("/task/:userId?", async (req, res) => {
   }
 });
 
-// Get all bot statuses
+// Get all bot statuses (Admin only)
 router.get("/all", async (req, res) => {
   try {
+    // Check if user is admin or has special permissions
+    const user = req.user;
+    if (!user || (user.licenseType !== "enterprise" && user.role !== "admin")) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Admin privileges required",
+      });
+    }
+
     const result = await BotStatusService.getAllBotStatuses();
 
     if (result.success) {

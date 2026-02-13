@@ -18,7 +18,15 @@ router.get("/status", async (req, res) => {
       });
     }
 
-    const userId = req.user?.userId || "default";
+    // Ensure user is authenticated and get userId
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
     const status = await botService.getBotStatus(userId);
 
     res.json({
@@ -47,10 +55,27 @@ router.post("/start", async (req, res) => {
       });
     }
 
-    const userId = req.user?.userId || "default";
+    // Ensure user is authenticated and get userId
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
     const userSettings = req.body || {};
 
-    console.log(`🚀 Starting bot for user: ${userId}`);
+    console.log(`🚀 Starting bot for authenticated user: ${userId}`);
+    
+    // Check if user can perform bot control action
+    if (!req.user.canPerformAction || !req.user.canPerformAction('bot_control')) {
+      return res.status(403).json({
+        success: false,
+        message: "Permission denied: Bot control requires valid license",
+      });
+    }
+    
     const result = await botService.startBot(userId, userSettings);
 
     res.json({
@@ -79,8 +104,25 @@ router.post("/stop", async (req, res) => {
       });
     }
 
-    const userId = req.user?.userId || "default";
-    console.log(`🛑 Stopping bot for user: ${userId}`);
+    // Ensure user is authenticated and get userId
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    console.log(`🛑 Stopping bot for authenticated user: ${userId}`);
+    
+    // Check if user can perform bot control action
+    if (!req.user.canPerformAction || !req.user.canPerformAction('bot_control')) {
+      return res.status(403).json({
+        success: false,
+        message: "Permission denied: Bot control requires valid license",
+      });
+    }
+    
     const result = await botService.stopBot(userId);
 
     res.json({
@@ -109,8 +151,18 @@ router.post("/emergency-stop", async (req, res) => {
       });
     }
 
-    const userId = req.user?.userId || "default";
-    console.log(`🚨 Emergency stop for user: ${userId}`);
+    // Ensure user is authenticated and get userId
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    console.log(`🚨 Emergency stop for authenticated user: ${userId}`);
+    
+    // Emergency stop doesn't check permissions - safety first
     const result = await botService.stopBot(userId);
 
     res.json({

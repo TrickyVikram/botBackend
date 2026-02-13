@@ -17,6 +17,11 @@ class BotService {
 
   async getBotStatus(userId) {
     try {
+      // Validate userId
+      if (!userId || userId === "default") {
+        throw new Error("Valid userId required for bot operations");
+      }
+
       // Get database status
       const dbStatus = await BotStatus.getBotStatus(userId);
 
@@ -26,6 +31,7 @@ class BotService {
         processId: null,
         uptime: 0,
         timestamp: new Date(),
+        userId: userId, // Include userId for verification
         // Database status
         dbStatus: {
           botStatus: dbStatus.botStatus,
@@ -47,6 +53,11 @@ class BotService {
 
   async startBot(userId, userSettings = {}) {
     try {
+      // Validate userId
+      if (!userId || userId === "default") {
+        throw new Error("Valid userId required for bot operations");
+      }
+
       console.log(`🚀 Starting bot for user: ${userId}`);
 
       // Get current bot status from database
@@ -74,7 +85,7 @@ class BotService {
       });
       this.botStatuses.set(userId, "running");
 
-      // Emit socket event
+      // Emit socket event with userId for user-specific updates
       if (this.io) {
         this.io.emit("bot-status", {
           userId,
@@ -109,6 +120,11 @@ class BotService {
 
   async stopBot(userId) {
     try {
+      // Validate userId
+      if (!userId || userId === "default") {
+        throw new Error("Valid userId required for bot operations");
+      }
+
       console.log(`🛑 Stopping bot for user: ${userId}`);
 
       // Get current status from database
@@ -127,7 +143,7 @@ class BotService {
       this.activeBots.delete(userId);
       this.botStatuses.set(userId, "stopped");
 
-      // Emit socket event
+      // Emit socket event with userId for user-specific updates
       if (this.io) {
         this.io.emit("bot-status", {
           userId,

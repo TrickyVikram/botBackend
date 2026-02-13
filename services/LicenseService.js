@@ -5,6 +5,7 @@
  */
 
 const UserLicense = require("../models/UserLicense");
+
 const cron = require("node-cron");
 
 class LicenseService {
