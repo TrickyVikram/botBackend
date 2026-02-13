@@ -46,7 +46,7 @@ const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://127.0.0.1:3000", // Local development
   "http://localhost:8080", // Local development alternate
-  "http://localhost:3001", // Additional port
+  "https://botforntend.onrender.com", // Additional port
   "http://localhost:8000", // Additional port
   "file://", // Allow file system access for local HTML files
   process.env.FRONTEND_URL, // Live dashboard URL

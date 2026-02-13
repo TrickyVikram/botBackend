@@ -8,10 +8,10 @@ router.get("/status/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent accessing other users' data
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -50,10 +50,10 @@ router.post("/start/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent controlling other users' bots
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -85,10 +85,10 @@ router.post("/stop/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent controlling other users' bots
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -121,10 +121,10 @@ router.post("/pause/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent controlling other users' bots
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -156,10 +156,10 @@ router.post("/resume/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent controlling other users' bots
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -191,10 +191,10 @@ router.post("/connections/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent updating other users' data
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
@@ -239,10 +239,10 @@ router.post("/task/:userId?", async (req, res) => {
     // Get authenticated user's ID
     const authenticatedUserId = req.user?.userId;
     const requestedUserId = req.params.userId;
-    
+
     // Use authenticated user's ID, ignore parameter for security
     const userId = authenticatedUserId || requestedUserId || "default";
-    
+
     // Prevent updating other users' data
     if (requestedUserId && requestedUserId !== authenticatedUserId) {
       return res.status(403).json({
