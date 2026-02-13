@@ -41,38 +41,10 @@ const PORT = process.env.PORT || 5002;
 // Initialize services as global variables
 let botService;
 let licenseService;
-// Live Dashboard Configuration - Allow any origin for live dashboard
-const allowedOrigins = [
-  "http://localhost:3000", // Local development
-  "http://127.0.0.1:3000", // Local development
-  "http://localhost:8080", // Local development alternate
-  "https://botforntend.onrender.com", // Additional port
-  "http://localhost:8000", // Additional port
-  "file://", // Allow file system access for local HTML files
-  process.env.FRONTEND_URL, // Live dashboard URL
-  // Add any live hosting URLs here (Netlify, Vercel, etc.)
-  /\.netlify\.app$/,
-  /\.vercel\.app$/,
-  /\.github\.io$/,
-  /\.firebaseapp\.com$/,
-  /localhost:\d+/, // Allow any localhost port
-].filter(Boolean);
 
 const io = socketIo(server, {
   cors: {
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, Postman)
-      if (!origin) return callback(null, true);
-
-      // Check if origin is in allowed list
-      const isAllowed = allowedOrigins.some((allowedOrigin) => {
-        if (typeof allowedOrigin === "string") return allowedOrigin === origin;
-        if (allowedOrigin instanceof RegExp) return allowedOrigin.test(origin);
-        return false;
-      });
-
-      callback(null, isAllowed);
-    },
+    origin: true, // Allow all origins
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -113,30 +85,10 @@ app.use(
 
 app.use(compression());
 
-// Enhanced CORS for live dashboard
+// Enhanced CORS - Allow All Origins
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like file:// or mobile apps)
-      if (!origin) return callback(null, true);
-
-      // Allow file:// protocol for local HTML files
-      if (origin.startsWith("file://")) return callback(null, true);
-
-      // Check if origin is in allowed list
-      const isAllowed = allowedOrigins.some((allowedOrigin) => {
-        if (typeof allowedOrigin === "string") return allowedOrigin === origin;
-        if (allowedOrigin instanceof RegExp) return allowedOrigin.test(origin);
-        return false;
-      });
-
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        console.warn(`CORS blocked origin: ${origin}`);
-        callback(null, true); // Allow all origins for testing
-      }
-    },
+    origin: true, // Allow all origins
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
