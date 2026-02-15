@@ -25,6 +25,9 @@ const licenseRoutes = require("./routes/license");
 const settingsRoutes = require("./routes/settings");
 const analyticsRoutes = require("./routes/analytics");
 const botStatusRoutes = require("./routes/bot-status");
+const followupRoutes = require("./routes/followup");
+const postsRoutes = require("./routes/posts");
+const messagesRoutes = require("./routes/messages");
 
 // Import middleware
 const authMiddleware = require("./middleware/auth");
@@ -276,6 +279,9 @@ app.use("/api/bot-status", authMiddleware, botStatusRoutes);
 app.use("/api/license", authMiddleware, licenseMiddleware, licenseRoutes);
 app.use("/api/settings", settingsRoutes); // Removed auth and license middleware for testing
 app.use("/api/analytics", authMiddleware, analyticsRoutes);
+app.use("/api/followup", followupRoutes); // New follow-up routes
+app.use("/api/posts", postsRoutes); // New post management routes
+app.use("/api/messages", messagesRoutes); // New message management routes
 
 // Add public analytics endpoint for testing
 app.use("/api/public/analytics", analyticsRoutes);
