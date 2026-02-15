@@ -6,6 +6,7 @@
 
 const express = require("express");
 const { body, validationResult } = require("express-validator");
+const jwt = require("jsonwebtoken");
 // Remove the broken import, we'll handle permissions in the route handlers
 
 // Import existing models
@@ -17,6 +18,78 @@ const WarmupSettings = require("../models/WarmupSettings");
 const UserLicense = require("../models/UserLicense");
 
 const router = express.Router();
+
+// ===== JWT UTILITY FUNCTIONS =====
+const extractUserFromToken = async (authHeader) => {
+  try {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    console.log("🔐 Extracting user from JWT token...");
+
+    // For development - we'll decode without verification first
+    // In production, use proper JWT secret verification
+    const decoded = jwt.decode(token);
+    console.log("📋 Decoded token:", decoded);
+
+    if (decoded && decoded.userId) {
+      // Find user in database
+      const user = await UserLicense.findOne({ userId: decoded.userId });
+      if (user) {
+        console.log("✅ User found from token:", user.username, user.userId);
+        return {
+          userId: user.userId,
+          username: user.username,
+          email: user.email,
+          _id: user._id,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("❌ Token extraction error:", error);
+    return null;
+  }
+};
+
+const findUserByHeaders = async (req) => {
+  // Get user ID from headers
+  const headerUserId = req.get("X-User-ID");
+  const headerUserName = req.get("X-User-Name");
+  const headerUserEmail = req.get("X-User-Email");
+
+  console.log("🔍 Looking for user with header ID:", headerUserId);
+
+  if (headerUserId) {
+    // First try to find by userId field
+    let user = await UserLicense.findOne({ userId: headerUserId });
+
+    if (!user && headerUserEmail) {
+      // Try to find by email
+      user = await UserLicense.findOne({ email: headerUserEmail });
+    }
+
+    if (!user && headerUserName && headerUserEmail) {
+      // Create new user if doesn't exist
+      console.log("🆕 Creating new user:", headerUserName);
+      user = await UserLicense.create({
+        userId: headerUserId,
+        username: headerUserName,
+        email: headerUserEmail,
+        password: "temp123", // Temporary password
+        licenseType: "trial",
+      });
+      console.log("✅ New user created:", user.userId);
+    }
+
+    return user;
+  }
+
+  return null;
+};
 
 // ===== LICENSE MIDDLEWARE FOR DAILY LIMITS =====
 const setDefaultLicenseInfo = (req, res, next) => {
@@ -38,21 +111,40 @@ router.use(setDefaultLicenseInfo);
 // ===== USER IDENTIFICATION MIDDLEWARE =====
 const identifyCurrentUser = async (req, res, next) => {
   try {
-    // Method 1: Try to get user from JWT token or session
-    if (req.user && req.user.id) {
-      req.currentUserId = req.user.id;
-      req.currentUserInfo = req.user;
-      return next();
+    // Method 1: Try to get user from JWT token
+    const authHeader = req.get("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      try {
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "default-secret-key",
+        );
+
+        // Find user by JWT userId (not MongoDB _id)
+        const user = await UserLicense.findOne({ userId: decoded.userId });
+        if (user) {
+          req.currentUserId = user.userId; // Use UserLicense.userId, not MongoDB _id
+          req.currentUserInfo = user;
+          console.log(`🔐 JWT User found: ${user.username} (${user.userId})`);
+          return next();
+        }
+      } catch (jwtError) {
+        console.log(`⚠️ JWT verification failed:`, jwtError.message);
+      }
     }
 
-    // Method 2: Try to get user from hardcoded headers (for frontend compatibility)
+    // Method 2: Try to get user from hardcoded headers (for development/frontend compatibility)
     const hardcodedUserId = req.get("X-User-ID");
     const hardcodedUserName = req.get("X-User-Name");
     const hardcodedUserEmail = req.get("X-User-Email");
 
     if (hardcodedUserId && hardcodedUserName && hardcodedUserEmail) {
-      // Try to find existing user with this ID
-      const existingUser = await UserLicense.findById(hardcodedUserId);
+      // Try to find existing user with this userId (not MongoDB _id)
+      const existingUser = await UserLicense.findOne({
+        userId: hardcodedUserId,
+      });
       if (existingUser) {
         req.currentUserId = hardcodedUserId;
         req.currentUserInfo = existingUser;
@@ -61,25 +153,25 @@ const identifyCurrentUser = async (req, res, next) => {
         );
         return next();
       }
+
+      // If user doesn't exist, create one with this userId
+      const newUser = new UserLicense({
+        userId: hardcodedUserId,
+        username: hardcodedUserName,
+        email: hardcodedUserEmail,
+        password: "temp-password", // This should be hashed in production
+      });
+
+      await newUser.save();
+      req.currentUserId = hardcodedUserId;
+      req.currentUserInfo = newUser;
+      console.log(
+        `👤 Created new user: ${hardcodedUserName} (${hardcodedUserId})`,
+      );
+      return next();
     }
 
-    // Method 3: Try to get user from authorization header (JWT token)
-    const authHeader = req.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.substring(7);
-      try {
-        // Here you would normally verify JWT token and extract userId
-        // For now, we'll skip JWT verification and assume token contains userId
-        // In production, use proper JWT verification
-
-        console.log(`🔐 JWT Token found, but skipping verification for now`);
-        // Don't try to use token as ObjectId directly
-      } catch (jwtError) {
-        console.log(`⚠️ JWT verification failed:`, jwtError.message);
-      }
-    }
-
-    // Method 4: Create/Find user based on fingerprint (fallback)
+    // Method 3: Create/Find user based on fingerprint (fallback)
     const userIP = req.ip || req.connection.remoteAddress || "unknown";
     const userAgent = req.get("User-Agent") || "unknown";
 
@@ -220,6 +312,65 @@ router.get("/keywords", identifyCurrentUser, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to get keywords",
+    });
+  }
+});
+
+// New Keywords List API with User ID filtering
+router.get("/keywords-list", async (req, res) => {
+  try {
+    console.log("🚀 KEYWORDS-LIST ROUTE REACHED!");
+    console.log("📋 Headers:", req.headers);
+
+    // Get user ID from headers
+    const userID = req.get("X-User-ID");
+    const userName = req.get("X-User-Name") || "Unknown User";
+
+    console.log("🔍 Filtering keywords for User ID:", userID);
+
+    if (!userID) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required in headers (X-User-ID)",
+      });
+    }
+
+    // Get all keywords for debugging
+    const allKeywords = await SearchKeyword.find({}).sort({ createdAt: -1 });
+    console.log(`📊 Total keywords in database: ${allKeywords.length}`);
+
+    // Filter keywords by user ID
+    const userKeywords = await SearchKeyword.find({
+      "createdBy.userId": userID,
+    }).sort({ createdAt: -1 });
+
+    console.log(`✅ Found ${userKeywords.length} keywords for user ${userID}`);
+
+    // Log sample data for debugging
+    if (userKeywords.length > 0) {
+      console.log("📝 Sample keyword:", {
+        keyword: userKeywords[0].keyword,
+        status: userKeywords[0].status,
+        createdBy: userKeywords[0].createdBy?.userId,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: userKeywords,
+      meta: {
+        total: userKeywords.length,
+        userID: userID,
+        userName: userName,
+        totalInDatabase: allKeywords.length,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Keywords-list error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch keywords",
+      error: error.message,
     });
   }
 });
@@ -378,6 +529,148 @@ router.post(
   },
 );
 
+// Simple Add Keyword API (for user ID based saving)
+router.post("/add-keyword", async (req, res) => {
+  console.log("🚀 ADD-KEYWORD ROUTE REACHED!");
+
+  try {
+    console.log("🔍 Full request body:", JSON.stringify(req.body, null, 2));
+
+    const {
+      keyword,
+      subject,
+      connectMessage,
+      directMessage,
+      status,
+      userID,
+      alternativeMessages,
+      msgSetting,
+    } = req.body;
+
+    console.log("📝 Simple Add Keyword Request:", {
+      keyword,
+      subject,
+      connectMessage: connectMessage?.substring(0, 30) + "...",
+      directMessage: directMessage?.substring(0, 30) + "...",
+      status,
+      userID,
+      alternativeMessages,
+      msgSetting,
+    });
+
+    // Basic validation
+    if (!keyword || !keyword.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Keyword is required",
+      });
+    }
+
+    if (!connectMessage || !connectMessage.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Connect message is required",
+      });
+    }
+
+    if (!directMessage || !directMessage.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Direct message is required",
+      });
+    }
+
+    if (!userID || !userID.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+      });
+    }
+
+    // Check for duplicate keyword for this user
+    const existingKeyword = await SearchKeyword.findOne({
+      keyword: { $regex: new RegExp(`^${keyword.trim()}$`, "i") },
+      "createdBy.userId": userID,
+    });
+
+    if (existingKeyword) {
+      return res.status(409).json({
+        success: false,
+        message: `Keyword "${keyword}" already exists for this user`,
+      });
+    }
+
+    // Create new keyword with all fields
+    const newKeyword = new SearchKeyword({
+      keyword: keyword.trim(),
+      subject: subject?.trim() || "Professional Collaboration Opportunity",
+      connectMessage: connectMessage.trim(),
+      directMessage: directMessage.trim(),
+      status: status || "active",
+      msgSetting: msgSetting || "normal", // Add msgSetting field
+      createdBy: {
+        userId: userID, // Use provided userID
+        userName: "User", // Default name
+        userEmail: "unknown",
+        userIP: req.ip || "unknown",
+        userAgent: req.get("User-Agent")?.substring(0, 100) || "unknown",
+      },
+      usageStats: {
+        totalUses: 0,
+        lastUsed: null,
+        successfulConnections: 0,
+      },
+      alternativeMessages: alternativeMessages || {
+        subjects: [subject?.trim() || "Professional Collaboration"],
+        connectMessages: [connectMessage.trim()],
+        directMessages: [directMessage.trim()],
+      },
+    });
+
+    await newKeyword.save();
+
+    console.log("✅ Complete keyword saved successfully:", {
+      keyword: newKeyword.keyword,
+      subject: newKeyword.subject,
+      userID: userID,
+      id: newKeyword._id,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Keyword saved successfully!",
+      data: {
+        id: newKeyword._id,
+        keyword: newKeyword.keyword,
+        subject: newKeyword.subject,
+        connectMessage: newKeyword.connectMessage,
+        directMessage: newKeyword.directMessage,
+        status: newKeyword.status,
+        userID: userID,
+        msgSetting: newKeyword.msgSetting,
+        alternativeMessages: newKeyword.alternativeMessages,
+        createdAt: newKeyword.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Simple add keyword error:", error);
+
+    // Handle MongoDB duplicate key error
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Keyword already exists",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to save keyword",
+      error: error.message,
+    });
+  }
+});
+
 // Update search keyword
 router.put(
   "/keywords/:id",
@@ -394,6 +687,10 @@ router.put(
       .optional()
       .isLength({ min: 10, max: 500 })
       .withMessage("Direct message must be 10-500 characters"),
+    body("msgSetting")
+      .optional()
+      .isIn(["normal", "alternative"])
+      .withMessage("msgSetting must be 'normal' or 'alternative'"),
   ],
   async (req, res) => {
     try {
@@ -505,6 +802,184 @@ router.patch("/keywords/:id/toggle-status", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to toggle keyword status",
+    });
+  }
+});
+
+// Get alternative messages for a keyword
+router.get("/keywords/:id/alternative-messages", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const keyword = await SearchKeyword.findById(id);
+
+    if (!keyword) {
+      return res.status(404).json({
+        success: false,
+        message: "Keyword not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        keyword: keyword.keyword,
+        subject: keyword.subject,
+        connectMessage: keyword.connectMessage,
+        directMessage: keyword.directMessage,
+        alternativeMessages: keyword.alternativeMessages || {
+          subjects: [],
+          connectMessages: [],
+          directMessages: [],
+        },
+        totalAlternatives: {
+          subjects: keyword.alternativeMessages?.subjects?.length || 0,
+          connectMessages:
+            keyword.alternativeMessages?.connectMessages?.length || 0,
+          directMessages:
+            keyword.alternativeMessages?.directMessages?.length || 0,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get alternative messages error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get alternative messages",
+    });
+  }
+});
+
+// Add alternative message to a keyword
+router.post("/keywords/:id/alternative-messages", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, message } = req.body; // type: 'subjects', 'connectMessages', 'directMessages'
+
+    if (!type || !message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Type and message are required",
+      });
+    }
+
+    const validTypes = ["subjects", "connectMessages", "directMessages"];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid message type. Must be: subjects, connectMessages, or directMessages",
+      });
+    }
+
+    const keyword = await SearchKeyword.findById(id);
+
+    if (!keyword) {
+      return res.status(404).json({
+        success: false,
+        message: "Keyword not found",
+      });
+    }
+
+    // Initialize alternativeMessages if it doesn't exist
+    if (!keyword.alternativeMessages) {
+      keyword.alternativeMessages = {
+        subjects: [],
+        connectMessages: [],
+        directMessages: [],
+      };
+    }
+
+    // Add the new message to the appropriate array
+    if (!keyword.alternativeMessages[type]) {
+      keyword.alternativeMessages[type] = [];
+    }
+
+    // Check for duplicates
+    const messageExists = keyword.alternativeMessages[type].includes(
+      message.trim(),
+    );
+    if (messageExists) {
+      return res.status(400).json({
+        success: false,
+        message: "This alternative message already exists",
+      });
+    }
+
+    keyword.alternativeMessages[type].push(message.trim());
+    keyword.markModified("alternativeMessages");
+    await keyword.save();
+
+    res.json({
+      success: true,
+      message: "Alternative message added successfully",
+      data: {
+        keyword: keyword.keyword,
+        alternativeMessages: keyword.alternativeMessages,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Add alternative message error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add alternative message",
+    });
+  }
+});
+
+// Delete alternative message from a keyword
+router.delete("/keywords/:id/alternative-messages", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, index } = req.body;
+
+    if (!type || index === undefined || index === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Type and index are required",
+      });
+    }
+
+    const keyword = await SearchKeyword.findById(id);
+
+    if (!keyword) {
+      return res.status(404).json({
+        success: false,
+        message: "Keyword not found",
+      });
+    }
+
+    if (!keyword.alternativeMessages || !keyword.alternativeMessages[type]) {
+      return res.status(400).json({
+        success: false,
+        message: "No alternative messages found for this type",
+      });
+    }
+
+    if (index >= keyword.alternativeMessages[type].length || index < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid message index",
+      });
+    }
+
+    keyword.alternativeMessages[type].splice(index, 1);
+    keyword.markModified("alternativeMessages");
+    await keyword.save();
+
+    res.json({
+      success: true,
+      message: "Alternative message deleted successfully",
+      data: {
+        keyword: keyword.keyword,
+        alternativeMessages: keyword.alternativeMessages,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Delete alternative message error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete alternative message",
     });
   }
 });
@@ -698,8 +1173,6 @@ router.put(
 
 // ===== WARMUP SETTINGS =====
 
-
-
 // Get warmup settings
 router.get("/warmup", async (req, res) => {
   try {
@@ -773,10 +1246,6 @@ router.put(
     }
   },
 );
-
-
-
-
 
 // ===== BULK SETTINGS =====
 

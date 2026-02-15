@@ -33,6 +33,7 @@ const licenseMiddleware = require("./middleware/license");
 // Import services
 const BotService = require("./services/BotService");
 const LicenseService = require("./services/LicenseService");
+const BotStatusService = require("./services/BotStatusService");
 
 const app = express();
 const server = http.createServer(app);
@@ -48,7 +49,14 @@ const io = socketIo(server, {
     methods: ["GET", "POST"],
     credentials: true,
   },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 5000,
+  allowEIO3: true,
 });
+
+// Set Socket.IO instance for real-time updates
+BotStatusService.setSocketIO(io);
 
 // Security middleware with live dashboard support
 app.use(
@@ -169,12 +177,59 @@ app.use((req, res, next) => {
 
 // Routes
 app.get("/api/health", (req, res) => {
-  res.json({
+  const healthInfo = {
     success: true,
     message: "LinkedIn Bot Dashboard API is running",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
+    environment: process.env.NODE_ENV || "development",
+    port: PORT,
+    services: {
+      database: !!dbConnection,
+      botService: !!botService,
+      licenseService: !!licenseService,
+      socketIO: !!io,
+    },
+    socketClients: io.engine.clientsCount || 0,
+  };
+
+  res.json(healthInfo);
+});
+
+// WebSocket health check
+app.get("/api/ws/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "WebSocket server is ready",
+    clients: io.engine.clientsCount || 0,
+    timestamp: new Date().toISOString(),
   });
+});
+
+// Debug endpoint to check current bot status
+app.get("/api/debug/bot-status", async (req, res) => {
+  try {
+    const userId = req.query.userId || "8f5393b72af06c99bfaf884516e5829d";
+    const currentStatus = await botService.getBotStatus(userId);
+
+    res.json({
+      success: true,
+      message: "Debug bot status",
+      data: {
+        userId,
+        currentStatus,
+        socketConnected: !!io,
+        socketClients: io ? io.engine.clientsCount : 0,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Debug failed",
+      error: error.message,
+    });
+  }
 });
 
 // Handle preflight requests for all routes
@@ -190,6 +245,28 @@ app.options("*", (req, res) => {
   );
   res.header("Access-Control-Allow-Credentials", "true");
   res.sendStatus(200);
+});
+
+// Public debug routes - no authentication required
+app.get("/api/debug/bot-status", async (req, res) => {
+  try {
+    const testUserId = "8f5393b72af06c99bfaf884516e5829d"; // Using the actual user ID from your database
+    const status = await botService.getBotStatus(testUserId);
+
+    res.json({
+      success: true,
+      message: "Debug bot status retrieved",
+      userId: testUserId,
+      data: status,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to get debug bot status",
+      error: error.message,
+    });
+  }
 });
 
 // Public routes - simplified for testing
@@ -238,6 +315,12 @@ app.use((req, res) => {
 io.on("connection", (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
+  // Send connection confirmation
+  socket.emit("connection-confirmed", {
+    socketId: socket.id,
+    timestamp: new Date().toISOString(),
+  });
+
   socket.on("join-dashboard", async (data) => {
     try {
       const { userId, licenseKey } = data;
@@ -255,14 +338,28 @@ io.on("connection", (socket) => {
       // Send initial bot status
       const botStatus = await botService.getBotStatus(userId);
       socket.emit("bot-status", botStatus);
+
+      // Confirm successful join
+      socket.emit("dashboard-joined", {
+        userId,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.error("❌ Socket join error:", error);
       socket.emit("error", { message: "Failed to join dashboard" });
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log(`🔌 User disconnected: ${socket.id}`);
+  socket.on("ping", () => {
+    socket.emit("pong", { timestamp: new Date().toISOString() });
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log(`🔌 User disconnected: ${socket.id}, reason: ${reason}`);
+  });
+
+  socket.on("error", (error) => {
+    console.error(`❌ Socket error for ${socket.id}:`, error);
   });
 });
 

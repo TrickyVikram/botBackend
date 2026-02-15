@@ -1,6 +1,21 @@
 const BotStatus = require("../models/BotStatus");
 
 class BotStatusService {
+  static io = null;
+
+  // Set Socket.IO instance for real-time updates
+  static setSocketIO(socketIO) {
+    this.io = socketIO;
+  }
+
+  // Emit bot status update to connected clients
+  static emitStatusUpdate(userId, status) {
+    if (this.io) {
+      this.io.to(`user-${userId}`).emit("bot-status-update", status);
+      console.log(`📡 Emitted bot status update for user: ${userId}`);
+    }
+  }
+
   // Start bot and update status
   static async startBot(userId = "default") {
     try {
@@ -8,6 +23,20 @@ class BotStatusService {
       console.log(
         `✅ Bot status updated - Active: ${status.isActive} for user: ${userId}`,
       );
+
+      // Emit real-time update
+      this.emitStatusUpdate(userId, {
+        userId: status.userId,
+        isActive: status.isActive,
+        status: status.status,
+        lastStartTime: status.lastStartTime,
+        lastStopTime: status.lastStopTime,
+        currentTask: status.currentTask,
+        connectionsToday: status.connectionsToday,
+        totalConnections: status.totalConnections,
+        errorMessage: status.errorMessage,
+      });
+
       return status;
     } catch (error) {
       console.error("❌ Error starting bot status:", error);
@@ -22,6 +51,20 @@ class BotStatusService {
       console.log(
         `🛑 Bot status updated - Active: ${status.isActive} for user: ${userId}`,
       );
+
+      // Emit real-time update
+      this.emitStatusUpdate(userId, {
+        userId: status.userId,
+        isActive: status.isActive,
+        status: status.status,
+        lastStartTime: status.lastStartTime,
+        lastStopTime: status.lastStopTime,
+        currentTask: status.currentTask,
+        connectionsToday: status.connectionsToday,
+        totalConnections: status.totalConnections,
+        errorMessage: status.errorMessage,
+      });
+
       return status;
     } catch (error) {
       console.error("❌ Error stopping bot status:", error);
@@ -40,6 +83,20 @@ class BotStatusService {
       console.log(
         `📊 Connection counts updated for user: ${userId} - Today: ${todayCount}, Total: ${totalCount}`,
       );
+
+      // Emit real-time update
+      this.emitStatusUpdate(userId, {
+        userId: status.userId,
+        isActive: status.isActive,
+        status: status.status,
+        lastStartTime: status.lastStartTime,
+        lastStopTime: status.lastStopTime,
+        currentTask: status.currentTask,
+        connectionsToday: status.connectionsToday,
+        totalConnections: status.totalConnections,
+        errorMessage: status.errorMessage,
+      });
+
       return status;
     } catch (error) {
       console.error("❌ Error updating connections:", error);
@@ -54,6 +111,20 @@ class BotStatusService {
       console.log(
         `📋 Current task updated for user: ${userId} - Task: ${task}`,
       );
+
+      // Emit real-time update
+      this.emitStatusUpdate(userId, {
+        userId: status.userId,
+        isActive: status.isActive,
+        status: status.status,
+        lastStartTime: status.lastStartTime,
+        lastStopTime: status.lastStopTime,
+        currentTask: status.currentTask,
+        connectionsToday: status.connectionsToday,
+        totalConnections: status.totalConnections,
+        errorMessage: status.errorMessage,
+      });
+
       return status;
     } catch (error) {
       console.error("❌ Error updating task:", error);

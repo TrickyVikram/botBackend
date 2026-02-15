@@ -1,8 +1,3 @@
-/**
- * AUTHENTICATION ROUTES
- *
- * User registration, login, and license management
- */
 
 const express = require("express");
 const bcrypt = require("bcryptjs");
@@ -12,7 +7,12 @@ const UserLicense = require("../models/UserLicense");
 
 const router = express.Router();
 
-// Register new user
+const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key";
+
+/* =========================================================
+   REGISTER
+========================================================= */
+
 router.post(
   "/register",
   [
@@ -20,20 +20,19 @@ router.post(
       .isLength({ min: 3, max: 30 })
       .withMessage("Username must be 3-30 characters")
       .matches(/^[a-zA-Z0-9_]+$/)
-      .withMessage(
-        "Username can only contain letters, numbers, and underscore",
-      ),
+      .withMessage("Username can only contain letters, numbers, and underscore"),
+
     body("email")
       .isEmail()
       .normalizeEmail()
       .withMessage("Valid email required"),
+
     body("password")
       .isLength({ min: 6 })
       .withMessage("Password must be at least 6 characters"),
   ],
   async (req, res) => {
     try {
-      // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -45,7 +44,7 @@ router.post(
 
       const { username, email, password } = req.body;
 
-      // Check if user already exists
+      // Check existing user
       const existingUser = await UserLicense.findOne({
         $or: [{ email }, { username }],
       });
@@ -67,11 +66,15 @@ router.post(
         password: hashedPassword,
       });
 
-      // Generate JWT token
+      // ✅ FIXED JWT (added userIDs)
       const token = jwt.sign(
-        { userId: newUser._id, licenseKey: newUser.licenseKey },
-        process.env.JWT_SECRET || "default-secret-key",
-        { expiresIn: "7d" },
+        {
+          userId: newUser._id,        // Mongo ObjectId
+          userIDs: newUser.userId,    // Custom userId
+          licenseKey: newUser.licenseKey,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
       );
 
       res.status(201).json({
@@ -81,6 +84,7 @@ router.post(
           token,
           user: {
             userId: newUser.userId,
+            mongoId: newUser._id,
             username: newUser.username,
             email: newUser.email,
             licenseKey: newUser.licenseKey,
@@ -98,10 +102,13 @@ router.post(
         message: "Registration failed",
       });
     }
-  },
+  }
 );
 
-// Login user
+/* =========================================================
+   LOGIN
+========================================================= */
+
 router.post(
   "/login",
   [
@@ -113,7 +120,6 @@ router.post(
   ],
   async (req, res) => {
     try {
-      // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -125,7 +131,6 @@ router.post(
 
       const { email, password } = req.body;
 
-      // Find user
       const user = await UserLicense.findOne({ email });
 
       if (!user) {
@@ -135,7 +140,6 @@ router.post(
         });
       }
 
-      // Check password
       const isValidPassword = await bcrypt.compare(password, user.password);
 
       if (!isValidPassword) {
@@ -145,7 +149,6 @@ router.post(
         });
       }
 
-      // Check if license is valid
       if (!user.isLicenseValid()) {
         return res.status(403).json({
           success: false,
@@ -159,17 +162,20 @@ router.post(
         });
       }
 
-      // Update last login
       await user.updateLastLogin({
         ip: req.ip,
         userAgent: req.get("User-Agent"),
       });
 
-      // Generate JWT token
+      // ✅ FIXED JWT (added userIDs)
       const token = jwt.sign(
-        { userId: user._id, licenseKey: user.licenseKey },
-        process.env.JWT_SECRET || "default-secret-key",
-        { expiresIn: "7d" },
+        {
+          userId: user._id,       // Mongo ObjectId
+          userIDs: user.userId,   // Custom userId
+          licenseKey: user.licenseKey,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
       );
 
       res.json({
@@ -179,6 +185,7 @@ router.post(
           token,
           user: {
             userId: user.userId,
+            mongoId: user._id,
             username: user.username,
             email: user.email,
             licenseKey: user.licenseKey,
@@ -198,10 +205,13 @@ router.post(
         message: "Login failed",
       });
     }
-  },
+  }
 );
 
-// Verify license key
+/* =========================================================
+   VERIFY LICENSE
+========================================================= */
+
 router.post(
   "/verify-license",
   [body("licenseKey").notEmpty().withMessage("License key required")],
@@ -246,7 +256,7 @@ router.post(
         message: "License verification failed",
       });
     }
-  },
+  }
 );
 
 module.exports = router;

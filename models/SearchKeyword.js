@@ -30,6 +30,12 @@ const SearchKeywordSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Message Setting - determines whether to use alternative messages or normal
+    msgSetting: {
+      type: String,
+      enum: ["normal", "alternative"],
+      default: "normal",
+    },
     // User information - WHO created this keyword
     createdBy: {
       userId: {

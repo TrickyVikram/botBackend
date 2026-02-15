@@ -25,9 +25,17 @@ class BotService {
       // Get database status
       const dbStatus = await BotStatus.getBotStatus(userId);
 
+      // Map database status to frontend expected status
+      let frontendStatus = "stopped";
+      if (dbStatus.botStatus === "enable" && dbStatus.isRunning) {
+        frontendStatus = "running";
+      } else if (dbStatus.botStatus === "disable" || !dbStatus.isRunning) {
+        frontendStatus = "stopped";
+      }
+
       return {
         isRunning: dbStatus.isRunning,
-        status: dbStatus.botStatus,
+        status: frontendStatus, // Use mapped status for frontend
         processId: null,
         uptime: 0,
         timestamp: new Date(),
