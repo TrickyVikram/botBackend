@@ -376,160 +376,6 @@ router.get("/keywords-list", async (req, res) => {
 });
 
 // Add new search keyword
-router.post(
-  "/keywords",
-  [
-    body("keyword")
-      .isLength({ min: 2, max: 100 })
-      .withMessage("Keyword must be 2-100 characters"),
-    body("connectMessage")
-      .isLength({ min: 10, max: 500 })
-      .withMessage("Connect message must be 10-500 characters"),
-    body("directMessage")
-      .isLength({ min: 10, max: 500 })
-      .withMessage("Direct message must be 10-500 characters"),
-  ],
-  identifyCurrentUser,
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: "Validation failed",
-          errors: errors.array(),
-        });
-      }
-
-      const { keyword, connectMessage, directMessage } = req.body;
-
-      // Enhanced validation
-      if (!keyword || !keyword.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Keyword is required",
-        });
-      }
-
-      if (!connectMessage || !connectMessage.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Connection message is required",
-        });
-      }
-
-      if (!directMessage || !directMessage.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Direct message is required",
-        });
-      }
-
-      // Get current user from middleware
-      const currentUserId = req.currentUserId;
-      const currentUserInfo = req.currentUserInfo;
-
-      console.log(
-        `🔑 Creating keyword for user: ${currentUserInfo.username} (${currentUserId})`,
-      );
-
-      // Check for duplicate (case insensitive) - USER SPECIFIC
-      const existingKeyword = await SearchKeyword.findOne({
-        keyword: { $regex: new RegExp(`^${keyword.trim()}$`, "i") },
-        "createdBy.userId": currentUserId,
-      });
-
-      if (existingKeyword) {
-        return res.status(409).json({
-          success: false,
-          message: `You already have a keyword "${keyword}". Please use a different keyword.`,
-        });
-      }
-
-      // License check (if license info is available) - USER SPECIFIC
-      if (req.licenseInfo) {
-        const currentKeywords = await SearchKeyword.countDocuments({
-          status: "active",
-          "createdBy.userId": currentUserId,
-        });
-        if (currentKeywords >= req.licenseInfo.permissions.maxSearchKeywords) {
-          return res.status(403).json({
-            success: false,
-            message: `Maximum ${req.licenseInfo.permissions.maxSearchKeywords} keywords allowed for ${req.licenseInfo.type} license`,
-          });
-        }
-      }
-
-      const currentUser = {
-        userId: currentUserId, // This is now the actual MongoDB _id
-        userName: currentUserInfo.username,
-        userEmail: currentUserInfo.email,
-        userIP: req.ip || req.connection.remoteAddress || "unknown",
-        userAgent: (req.get("User-Agent") || "unknown").substring(0, 100), // Limit length
-      };
-
-      console.log(`🔑 Creating keyword for user:`, {
-        userId: currentUser.userId,
-        userName: currentUser.userName,
-        userEmail: currentUser.userEmail,
-      });
-
-      const newKeyword = new SearchKeyword({
-        keyword: keyword.trim(),
-        connectMessage: connectMessage.trim(),
-        directMessage: directMessage.trim(),
-        status: "active",
-        createdBy: currentUser,
-        usageStats: {
-          totalUses: 0,
-          lastUsed: null,
-          successfulConnections: 0,
-        },
-        alternativeMessages: {
-          subjects: ["Professional Collaboration Opportunity"],
-          connectMessages: [connectMessage.trim()],
-          directMessages: [directMessage.trim()],
-        },
-      });
-
-      await newKeyword.save();
-
-      console.log(`✅ Added new keyword: ${newKeyword.keyword}`);
-
-      res.status(201).json({
-        success: true,
-        message: "Keyword added successfully",
-        data: newKeyword,
-      });
-    } catch (error) {
-      console.error("❌ Add keyword error:", error);
-
-      // Handle specific MongoDB errors
-      if (error.code === 11000) {
-        return res.status(409).json({
-          success: false,
-          message: "Keyword already exists",
-        });
-      }
-
-      if (error.name === "ValidationError") {
-        return res.status(400).json({
-          success: false,
-          message: "Validation error",
-          errors: Object.values(error.errors).map((e) => e.message),
-        });
-      }
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to add keyword",
-        error: error.message,
-      });
-    }
-  },
-);
-
-// Simple Add Keyword API (for user ID based saving)
 router.post("/add-keyword", async (req, res) => {
   console.log("🚀 ADD-KEYWORD ROUTE REACHED!");
 
@@ -610,8 +456,8 @@ router.post("/add-keyword", async (req, res) => {
       msgSetting: msgSetting || "normal", // Add msgSetting field
       createdBy: {
         userId: userID, // Use provided userID
-        userName: "User", // Default name
-        userEmail: "unknown",
+        // userName: "User", // Default name
+        // userEmail: "unknown",
         userIP: req.ip || "unknown",
         userAgent: req.get("User-Agent")?.substring(0, 100) || "unknown",
       },
@@ -681,11 +527,11 @@ router.put(
       .withMessage("Keyword must be 2-100 characters"),
     body("connectMessage")
       .optional()
-      .isLength({ min: 10, max: 500 })
+      .isLength({ min: 10, max: 5000 })
       .withMessage("Connect message must be 10-500 characters"),
     body("directMessage")
       .optional()
-      .isLength({ min: 10, max: 500 })
+      .isLength({ min: 10, max: 5000 })
       .withMessage("Direct message must be 10-500 characters"),
     body("msgSetting")
       .optional()
@@ -739,11 +585,8 @@ router.delete("/keywords/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deletedKeyword = await SearchKeyword.findByIdAndUpdate(
-      id,
-      { status: "inactive" },
-      { new: true },
-    );
+    // Actually delete the keyword from database
+    const deletedKeyword = await SearchKeyword.findByIdAndDelete(id);
 
     if (!deletedKeyword) {
       return res.status(404).json({
@@ -752,9 +595,15 @@ router.delete("/keywords/:id", async (req, res) => {
       });
     }
 
+    console.log(`🗑️ Keyword "${deletedKeyword.keyword}" permanently deleted`);
+
     res.json({
       success: true,
-      message: "Keyword deleted successfully",
+      message: "Keyword deleted permanently",
+      data: {
+        id: deletedKeyword._id,
+        keyword: deletedKeyword.keyword,
+      },
     });
   } catch (error) {
     console.error("❌ Delete keyword error:", error);
@@ -1130,11 +979,11 @@ router.put(
       .withMessage("Direct message chance must be 0-100"),
     body("connectionMessageTemplate")
       .optional()
-      .isLength({ min: 10, max: 500 })
+      .isLength({ min: 10, max: 5000 })
       .withMessage("Connection message template must be 10-500 characters"),
     body("directMessageTemplate")
       .optional()
-      .isLength({ min: 10, max: 500 })
+      .isLength({ min: 10, max: 5000 })
       .withMessage("Direct message template must be 10-500 characters"),
   ],
   async (req, res) => {
