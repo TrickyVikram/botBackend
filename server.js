@@ -389,7 +389,7 @@ cron.schedule("0 0 * * *", async () => {
 process.on("SIGTERM", async () => {
   console.log("📤 Received SIGTERM, shutting down gracefully...");
 
-  if (botService) {
+  if (botService && typeof botService.stopAllBots === "function") {
     await botService.stopAllBots();
   }
 
@@ -406,11 +406,13 @@ process.on("SIGTERM", async () => {
 process.on("SIGINT", async () => {
   console.log("📤 Received SIGINT, shutting down gracefully...");
 
-  if (botService) {
+  if (botService && botService.activeBots) {
     try {
-      // Stop all active bots
-      for (const userId of botService.activeBots.keys()) {
-        await botService.stopBot(userId);
+      // Stop all active bots if the method exists
+      if (typeof botService.stopBot === "function") {
+        for (const userId of botService.activeBots.keys()) {
+          await botService.stopBot(userId);
+        }
       }
     } catch (error) {
       console.log("⚠️ Error stopping bots:", error.message);
@@ -439,7 +441,7 @@ async function startServer() {
 📍 Port: ${PORT}
 🌐 Environment: ${process.env.NODE_ENV || "development"}
 🔗 Health Check: http://localhost:${PORT}/api/health
-📊 Dashboard: ${process.env.FRONTEND_URL || "https://botforntend.onrender.com"}
+📊 Dashboard: ${process.env.FRONTEND_URL || "http://localhost:3000"}
       `);
     });
   } catch (error) {

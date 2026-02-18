@@ -94,11 +94,14 @@ const findUserByHeaders = async (req) => {
 // ===== LICENSE MIDDLEWARE FOR DAILY LIMITS =====
 const setDefaultLicenseInfo = (req, res, next) => {
   // Provide default license info if not available
+  // IMPORTANT: These MUST match the DailyLimits schema maximum values!
   if (!req.licenseInfo) {
     req.licenseInfo = {
       permissions: {
-        maxDailyConnections: 100,
-        maxDailyMessages: 50,
+        maxDailyConnections: 50, // Must match schema max
+        maxDailyMessages: 20, // Must match schema max
+        maxProfileViews: 500, // Must match schema max
+        maxSearches: 50, // Must match schema max
       },
     };
   }
@@ -261,8 +264,8 @@ router.get("/health", async (req, res) => {
 // Get all search keywords for current user
 router.get("/keywords", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const username = req.user.username;
+    const userId = req.currentUserId;
+    const username = req.currentUserInfo?.username || "Unknown";
 
     console.log(`🔍 Fetching keywords for user: ${username} (${userId})`);
 
@@ -435,6 +438,8 @@ router.post("/add-keyword", async (req, res) => {
 
     // Create new keyword with all fields
     const newKeyword = new SearchKeyword({
+      userId: userID, // Add top-level userId field (required by schema)
+      username: "User", // Default username
       keyword: keyword.trim(),
       subject: subject?.trim() || "Professional Collaboration Opportunity",
       connectMessage: connectMessage.trim(),
@@ -828,18 +833,20 @@ router.delete("/keywords/:id/alternative-messages", async (req, res) => {
 // Get daily limits for current user
 router.get("/limits", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     console.log(`📊 Getting daily limits for user: ${userId}`);
 
     let limits = await DailyLimits.findOne({ userId: userId });
 
     if (!limits) {
       // Create default limits for this specific user
+      // Use model defaults which respect schema constraints
       limits = new DailyLimits({
         userId: userId,
-        username: req.user.username,
-        maxConnections: req.licenseInfo?.permissions?.maxDailyConnections || 8,
-        maxDirectMessages: req.licenseInfo?.permissions?.maxDailyMessages || 3,
+        username: req.user?.username || req.currentUserInfo?.username,
+        maxConnections: 8,
+        maxDirectMessages: 3,
         maxProfileViews: 50,
         maxSearches: 10,
       });
@@ -849,7 +856,15 @@ router.get("/limits", identifyCurrentUser, async (req, res) => {
 
     res.json({
       success: true,
-      data: limits,
+      data: {
+        maxConnections: limits.maxConnections,
+        maxDirectMessages: limits.maxDirectMessages,
+        maxProfileViews: limits.maxProfileViews,
+        maxSearches: limits.maxSearches,
+        userId: limits.userId,
+        createdAt: limits.createdAt,
+        updatedAt: limits.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Get limits error:", error);
@@ -863,7 +878,8 @@ router.get("/limits", identifyCurrentUser, async (req, res) => {
 // Get daily limits (alternative endpoint for frontend compatibility)
 router.get("/daily-limits", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     console.log(`📊 Getting daily limits for user: ${userId}`);
 
     let limits = await DailyLimits.findOne({ userId: userId });
@@ -872,9 +888,9 @@ router.get("/daily-limits", identifyCurrentUser, async (req, res) => {
       // Create default limits for this specific user
       limits = new DailyLimits({
         userId: userId,
-        username: req.user.username,
-        maxConnections: req.licenseInfo?.permissions?.maxDailyConnections || 8,
-        maxDirectMessages: req.licenseInfo?.permissions?.maxDailyMessages || 3,
+        username: req.user?.username || req.currentUserInfo?.username,
+        maxConnections: 8,
+        maxDirectMessages: 3,
         maxProfileViews: 50,
         maxSearches: 10,
       });
@@ -884,7 +900,15 @@ router.get("/daily-limits", identifyCurrentUser, async (req, res) => {
 
     res.json({
       success: true,
-      data: limits,
+      data: {
+        maxConnections: limits.maxConnections,
+        maxDirectMessages: limits.maxDirectMessages,
+        maxProfileViews: limits.maxProfileViews,
+        maxSearches: limits.maxSearches,
+        userId: limits.userId,
+        createdAt: limits.createdAt,
+        updatedAt: limits.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Get daily limits error:", error);
@@ -928,7 +952,8 @@ router.put(
         });
       }
 
-      const userId = req.user.userId;
+      // Always use currentUserId set by middleware (NEVER from user input)
+      const userId = req.currentUserId;
       const updateData = req.body;
 
       console.log(`💾 Updating limits for user: ${userId}`, updateData);
@@ -959,7 +984,7 @@ router.put(
           $set: {
             ...updateData,
             userId: userId,
-            username: req.user.username,
+            username: req.user?.username || req.currentUserInfo?.username,
           },
         },
         { new: true, upsert: true },
@@ -970,7 +995,15 @@ router.put(
       res.json({
         success: true,
         message: "Daily limits updated successfully",
-        data: limits,
+        data: {
+          maxConnections: limits.maxConnections,
+          maxDirectMessages: limits.maxDirectMessages,
+          maxProfileViews: limits.maxProfileViews,
+          maxSearches: limits.maxSearches,
+          userId: limits.userId,
+          createdAt: limits.createdAt,
+          updatedAt: limits.updatedAt,
+        },
       });
     } catch (error) {
       console.error("❌ Update limits error:", error);
@@ -985,7 +1018,8 @@ router.put(
 // POST method for daily limits (frontend compatibility)
 router.post("/daily-limits", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     const updateData = req.body;
 
     console.log(`💾 Saving daily limits for user: ${userId}`, updateData);
@@ -997,7 +1031,7 @@ router.post("/daily-limits", identifyCurrentUser, async (req, res) => {
         $set: {
           ...updateData,
           userId: userId,
-          username: req.user.username,
+          username: req.user?.username || req.currentUserInfo?.username,
         },
       },
       { new: true, upsert: true },
@@ -1008,7 +1042,15 @@ router.post("/daily-limits", identifyCurrentUser, async (req, res) => {
     res.json({
       success: true,
       message: "Daily limits saved successfully",
-      data: limits,
+      data: {
+        maxConnections: limits.maxConnections,
+        maxDirectMessages: limits.maxDirectMessages,
+        maxProfileViews: limits.maxProfileViews,
+        maxSearches: limits.maxSearches,
+        userId: limits.userId,
+        createdAt: limits.createdAt,
+        updatedAt: limits.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Save daily limits error:", error);
@@ -1024,7 +1066,8 @@ router.post("/daily-limits", identifyCurrentUser, async (req, res) => {
 // Get message strategy for current user
 router.get("/message-strategy", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     console.log(`💬 Getting message strategy for user: ${userId}`);
 
     let strategy = await MessageStrategy.findOne({ userId: userId });
@@ -1033,9 +1076,11 @@ router.get("/message-strategy", identifyCurrentUser, async (req, res) => {
       // Create default strategy for this specific user
       strategy = new MessageStrategy({
         userId: userId,
-        username: req.user.username,
+        username: req.user?.username || req.currentUserInfo?.username,
         mode: "mixed",
         directMessageChance: 30,
+        connectionRequestChance: 70,
+        personalizeMessages: true,
       });
       await strategy.save();
       console.log(`✅ Created default message strategy for user: ${userId}`);
@@ -1043,7 +1088,15 @@ router.get("/message-strategy", identifyCurrentUser, async (req, res) => {
 
     res.json({
       success: true,
-      data: strategy,
+      data: {
+        mode: strategy.mode || "mixed",
+        directMessageChance: strategy.directMessageChance || 30,
+        connectionRequestChance: strategy.connectionRequestChance || 70,
+        personalizeMessages: strategy.personalizeMessages !== false,
+        userId: strategy.userId,
+        createdAt: strategy.createdAt,
+        updatedAt: strategy.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Get message strategy error:", error);
@@ -1067,14 +1120,14 @@ router.put(
       .optional()
       .isInt({ min: 0, max: 100 })
       .withMessage("Direct message chance must be 0-100"),
-    body("connectionMessageTemplate")
+    body("connectionRequestChance")
       .optional()
-      .isLength({ min: 10, max: 5000 })
-      .withMessage("Connection message template must be 10-500 characters"),
-    body("directMessageTemplate")
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Connection request chance must be 0-100"),
+    body("personalizeMessages")
       .optional()
-      .isLength({ min: 10, max: 5000 })
-      .withMessage("Direct message template must be 10-500 characters"),
+      .isBoolean()
+      .withMessage("Personalize messages must be boolean"),
   ],
   async (req, res) => {
     try {
@@ -1087,7 +1140,8 @@ router.put(
         });
       }
 
-      const userId = req.user.userId;
+      // Always use currentUserId set by middleware (NEVER from user input)
+      const userId = req.currentUserId;
       const updateData = req.body;
 
       console.log(
@@ -1102,7 +1156,7 @@ router.put(
           $set: {
             ...updateData,
             userId: userId,
-            username: req.user.username,
+            username: req.user?.username || req.currentUserInfo?.username,
           },
         },
         { new: true, upsert: true },
@@ -1113,7 +1167,15 @@ router.put(
       res.json({
         success: true,
         message: "Message strategy updated successfully",
-        data: strategy,
+        data: {
+          mode: strategy.mode || "mixed",
+          directMessageChance: strategy.directMessageChance || 30,
+          connectionRequestChance: strategy.connectionRequestChance || 70,
+          personalizeMessages: strategy.personalizeMessages !== false,
+          userId: strategy.userId,
+          createdAt: strategy.createdAt,
+          updatedAt: strategy.updatedAt,
+        },
       });
     } catch (error) {
       console.error("❌ Update message strategy error:", error);
@@ -1128,7 +1190,8 @@ router.put(
 // POST method for message strategy (frontend compatibility)
 router.post("/message-strategy", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     const updateData = req.body;
 
     console.log(`💾 Saving message strategy for user: ${userId}`, updateData);
@@ -1140,7 +1203,7 @@ router.post("/message-strategy", identifyCurrentUser, async (req, res) => {
         $set: {
           ...updateData,
           userId: userId,
-          username: req.user.username,
+          username: req.user?.username || req.currentUserInfo?.username,
         },
       },
       { new: true, upsert: true },
@@ -1151,7 +1214,15 @@ router.post("/message-strategy", identifyCurrentUser, async (req, res) => {
     res.json({
       success: true,
       message: "Message strategy saved successfully",
-      data: strategy,
+      data: {
+        mode: strategy.mode || "mixed",
+        directMessageChance: strategy.directMessageChance || 30,
+        connectionRequestChance: strategy.connectionRequestChance || 70,
+        personalizeMessages: strategy.personalizeMessages !== false,
+        userId: strategy.userId,
+        createdAt: strategy.createdAt,
+        updatedAt: strategy.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Save message strategy error:", error);
@@ -1167,7 +1238,8 @@ router.post("/message-strategy", identifyCurrentUser, async (req, res) => {
 // Get warmup settings
 router.get("/warmup", identifyCurrentUser, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
     console.log(`🔥 Getting warmup settings for user: ${userId}`);
 
     let warmup = await WarmupSettings.findOne({ userId: userId });
@@ -1176,8 +1248,9 @@ router.get("/warmup", identifyCurrentUser, async (req, res) => {
       // Create default warmup settings for this specific user
       warmup = new WarmupSettings({
         userId: userId,
-        username: req.user.username,
+        username: req.user?.username || req.currentUserInfo?.username,
         enabled: true,
+        overrideWarmup: false,
         phase: "auto",
       });
       await warmup.save();
@@ -1185,7 +1258,14 @@ router.get("/warmup", identifyCurrentUser, async (req, res) => {
 
     res.json({
       success: true,
-      data: warmup,
+      data: {
+        enabled: warmup.enabled !== false,
+        overrideWarmup: warmup.overrideWarmup === true,
+        phase: warmup.phase || "auto",
+        userId: warmup.userId,
+        createdAt: warmup.createdAt,
+        updatedAt: warmup.updatedAt,
+      },
     });
   } catch (error) {
     console.error("❌ Get warmup settings error:", error);
@@ -1199,11 +1279,16 @@ router.get("/warmup", identifyCurrentUser, async (req, res) => {
 // Update warmup settings
 router.put(
   "/warmup",
+  identifyCurrentUser,
   [
     body("enabled")
       .optional()
       .isBoolean()
       .withMessage("Enabled must be boolean"),
+    body("overrideWarmup")
+      .optional()
+      .isBoolean()
+      .withMessage("OverrideWarmup must be boolean"),
     body("phase")
       .optional()
       .isIn(["auto", "week1", "week2", "week3", "week4plus"])
@@ -1220,18 +1305,40 @@ router.put(
         });
       }
 
+      // Always use currentUserId set by middleware (NEVER from user input)
+      const userId = req.currentUserId;
       const updateData = req.body;
 
+      console.log(
+        `💾 Updating warmup settings for user: ${userId}`,
+        updateData,
+      );
+
       const warmup = await WarmupSettings.findOneAndUpdate(
-        {},
-        { $set: updateData },
+        { userId: userId },
+        {
+          $set: {
+            ...updateData,
+            userId: userId,
+            username: req.user?.username || req.currentUserInfo?.username,
+          },
+        },
         { new: true, upsert: true },
       );
+
+      console.log(`✅ Updated warmup settings for user: ${userId}`, warmup);
 
       res.json({
         success: true,
         message: "Warmup settings updated successfully",
-        data: warmup,
+        data: {
+          enabled: warmup.enabled !== false,
+          overrideWarmup: warmup.overrideWarmup === true,
+          phase: warmup.phase || "auto",
+          userId: warmup.userId,
+          createdAt: warmup.createdAt,
+          updatedAt: warmup.updatedAt,
+        },
       });
     } catch (error) {
       console.error("❌ Update warmup settings error:", error);
@@ -1242,6 +1349,50 @@ router.put(
     }
   },
 );
+
+// POST method for warmup settings (frontend compatibility)
+router.post("/warmup", identifyCurrentUser, async (req, res) => {
+  try {
+    // Always use currentUserId set by middleware (NEVER from user input)
+    const userId = req.currentUserId;
+    const updateData = req.body;
+
+    console.log(`💾 Saving warmup settings for user: ${userId}`, updateData);
+
+    const warmup = await WarmupSettings.findOneAndUpdate(
+      { userId: userId },
+      {
+        $set: {
+          ...updateData,
+          userId: userId,
+          username: req.user?.username || req.currentUserInfo?.username,
+        },
+      },
+      { new: true, upsert: true },
+    );
+
+    console.log(`✅ Saved warmup settings for user: ${userId}`, warmup);
+
+    res.json({
+      success: true,
+      message: "Warmup settings saved successfully",
+      data: {
+        enabled: warmup.enabled !== false,
+        overrideWarmup: warmup.overrideWarmup === true,
+        phase: warmup.phase || "auto",
+        userId: warmup.userId,
+        createdAt: warmup.createdAt,
+        updatedAt: warmup.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Save warmup settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save warmup settings",
+    });
+  }
+});
 
 // ===== BULK SETTINGS =====
 
