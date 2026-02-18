@@ -7,7 +7,7 @@ const io = require("socket.io-client");
 const testConnection = () => {
   console.log("🔧 Testing WebSocket connection to backend...");
 
-  const socket = io("ws://localhost:5002", {
+  const socket = io("ws://botbackend-qtjt.onrender.com", {
     transports: ["websocket", "polling"],
     timeout: 5000,
   });
