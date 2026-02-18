@@ -53,7 +53,7 @@ const MONGO_URI =
     console.log("\n📋 To fix the authentication issue:");
     console.log("=====================================");
     console.log(
-      "1. Open your browser and go to: http://localhost:3000/dashboard",
+      "1. Open your browser and go to: https://botforntend.onrender.com/dashboard",
     );
     console.log("2. Open browser Developer Tools (F12 or Cmd+Opt+I)");
     console.log("3. Go to Console tab");

@@ -175,7 +175,7 @@ const createTestData = async () => {
 
     console.log("\n✅ Test data created successfully!");
     console.log(
-      "🌐 You can now test the user filtering on: http://localhost:3000/settings/keyword-list",
+      "🌐 You can now test the user filtering on: https://botforntend.onrender.com/settings/keyword-list",
     );
   } catch (error) {
     console.error("❌ Error creating test data:", error);

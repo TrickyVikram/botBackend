@@ -439,7 +439,7 @@ async function startServer() {
 📍 Port: ${PORT}
 🌐 Environment: ${process.env.NODE_ENV || "development"}
 🔗 Health Check: http://localhost:${PORT}/api/health
-📊 Dashboard: ${process.env.FRONTEND_URL || "http://localhost:3000"}
+📊 Dashboard: ${process.env.FRONTEND_URL || "https://botforntend.onrender.com"}
       `);
     });
   } catch (error) {
