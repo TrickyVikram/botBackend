@@ -261,66 +261,53 @@ router.get("/health", async (req, res) => {
 // Get all search keywords for current user
 router.get("/keywords", identifyCurrentUser, async (req, res) => {
   try {
-    const currentUserId = req.currentUserId;
-    const currentUserInfo = req.currentUserInfo;
+    const userId = req.user.userId;
+    const username = req.user.username;
 
-    console.log(
-      `🔍 Fetching keywords for user: ${currentUserInfo.username} (${currentUserId})`,
-    );
+    console.log(`🔍 Fetching keywords for user: ${username} (${userId})`);
 
-    // Debug: First get ALL keywords to see what we have
-    const allKeywords = await SearchKeyword.find({}).sort({ createdAt: -1 });
-    console.log(`🔍 Total keywords in database: ${allKeywords.length}`);
-
-    // Log first few keywords to see the structure
-    allKeywords.slice(0, 3).forEach((kw, i) => {
-      console.log(`🔍 Keyword ${i + 1}:`, {
-        keyword: kw.keyword,
-        status: kw.status,
-        createdBy: kw.createdBy,
-        createdByUserId: kw.createdBy?.userId,
-        currentUserId: currentUserId,
-        match: kw.createdBy?.userId === currentUserId,
-      });
-    });
-
-    // Filter by current user's MongoDB _id - Remove status filter for debugging
+    // Get keywords for current user only
     const keywords = await SearchKeyword.find({
-      "createdBy.userId": currentUserId,
+      userId: userId,
     }).sort({ createdAt: -1 });
 
-    console.log(
-      `📋 Found ${keywords.length} keywords for user ${currentUserId}`,
-    );
+    console.log(`� Found ${keywords.length} keywords for user ${userId}`);
 
     // Add user info to response
     const response = {
       success: true,
       data: keywords,
       userInfo: {
-        currentUserId: currentUserId,
-        userName: currentUserInfo.username,
-        totalKeywords: await SearchKeyword.countDocuments(),
-        userKeywords: keywords.length,
+        userId: userId,
+        username: username,
       },
     };
 
     res.json(response);
-    console.log(`👤 User keywords for ${currentUserId}: ${keywords.length}`);
   } catch (error) {
     console.error("❌ Get keywords error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to get keywords",
+      message: "Failed to fetch keywords",
+      error: error.message,
     });
   }
 });
 
 // New Keywords List API with User ID filtering
-router.get("/keywords-list", async (req, res) => {
+router.get("/keywords-list", identifyCurrentUser, async (req, res) => {
   try {
     console.log("🚀 KEYWORDS-LIST ROUTE REACHED!");
     console.log("📋 Headers:", req.headers);
+
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "Authorization header is missing",
+      });
+    }
 
     // Get user ID from headers
     const userID = req.get("X-User-ID");
@@ -836,17 +823,28 @@ router.delete("/keywords/:id/alternative-messages", async (req, res) => {
 // ===== DAILY LIMITS =====
 
 // Get daily limits
-router.get("/limits", async (req, res) => {
+// ===== DAILY LIMITS ROUTES =====
+
+// Get daily limits for current user
+router.get("/limits", identifyCurrentUser, async (req, res) => {
   try {
-    let limits = await DailyLimits.findOne();
+    const userId = req.user.userId;
+    console.log(`📊 Getting daily limits for user: ${userId}`);
+
+    let limits = await DailyLimits.findOne({ userId: userId });
 
     if (!limits) {
-      // Create default limits based on license
+      // Create default limits for this specific user
       limits = new DailyLimits({
-        maxConnections: req.licenseInfo.permissions.maxDailyConnections,
-        maxDirectMessages: req.licenseInfo.permissions.maxDailyMessages,
+        userId: userId,
+        username: req.user.username,
+        maxConnections: req.licenseInfo?.permissions?.maxDailyConnections || 8,
+        maxDirectMessages: req.licenseInfo?.permissions?.maxDailyMessages || 3,
+        maxProfileViews: 50,
+        maxSearches: 10,
       });
       await limits.save();
+      console.log(`✅ Created default limits for user: ${userId}`);
     }
 
     res.json({
@@ -862,9 +860,45 @@ router.get("/limits", async (req, res) => {
   }
 });
 
-// Update daily limits
+// Get daily limits (alternative endpoint for frontend compatibility)
+router.get("/daily-limits", identifyCurrentUser, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    console.log(`📊 Getting daily limits for user: ${userId}`);
+
+    let limits = await DailyLimits.findOne({ userId: userId });
+
+    if (!limits) {
+      // Create default limits for this specific user
+      limits = new DailyLimits({
+        userId: userId,
+        username: req.user.username,
+        maxConnections: req.licenseInfo?.permissions?.maxDailyConnections || 8,
+        maxDirectMessages: req.licenseInfo?.permissions?.maxDailyMessages || 3,
+        maxProfileViews: 50,
+        maxSearches: 10,
+      });
+      await limits.save();
+      console.log(`✅ Created default limits for user: ${userId}`);
+    }
+
+    res.json({
+      success: true,
+      data: limits,
+    });
+  } catch (error) {
+    console.error("❌ Get daily limits error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get daily limits",
+    });
+  }
+});
+
+// Update daily limits for current user
 router.put(
   "/limits",
+  identifyCurrentUser,
   [
     body("maxConnections")
       .optional()
@@ -894,32 +928,44 @@ router.put(
         });
       }
 
+      const userId = req.user.userId;
       const updateData = req.body;
+
+      console.log(`💾 Updating limits for user: ${userId}`, updateData);
 
       // Enforce license limits
       if (
         updateData.maxConnections &&
         updateData.maxConnections >
-          req.licenseInfo.permissions.maxDailyConnections
+          (req.licenseInfo?.permissions?.maxDailyConnections || 8)
       ) {
         updateData.maxConnections =
-          req.licenseInfo.permissions.maxDailyConnections;
+          req.licenseInfo?.permissions?.maxDailyConnections || 8;
       }
 
       if (
         updateData.maxDirectMessages &&
         updateData.maxDirectMessages >
-          req.licenseInfo.permissions.maxDailyMessages
+          (req.licenseInfo?.permissions?.maxDailyMessages || 3)
       ) {
         updateData.maxDirectMessages =
-          req.licenseInfo.permissions.maxDailyMessages;
+          req.licenseInfo?.permissions?.maxDailyMessages || 3;
       }
 
+      // Update limits for specific user only
       const limits = await DailyLimits.findOneAndUpdate(
-        {},
-        { $set: updateData },
+        { userId: userId },
+        {
+          $set: {
+            ...updateData,
+            userId: userId,
+            username: req.user.username,
+          },
+        },
         { new: true, upsert: true },
       );
+
+      console.log(`✅ Updated limits for user: ${userId}`, limits);
 
       res.json({
         success: true,
@@ -936,20 +982,63 @@ router.put(
   },
 );
 
+// POST method for daily limits (frontend compatibility)
+router.post("/daily-limits", identifyCurrentUser, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const updateData = req.body;
+
+    console.log(`💾 Saving daily limits for user: ${userId}`, updateData);
+
+    // Update limits for specific user only
+    const limits = await DailyLimits.findOneAndUpdate(
+      { userId: userId },
+      {
+        $set: {
+          ...updateData,
+          userId: userId,
+          username: req.user.username,
+        },
+      },
+      { new: true, upsert: true },
+    );
+
+    console.log(`✅ Saved daily limits for user: ${userId}`, limits);
+
+    res.json({
+      success: true,
+      message: "Daily limits saved successfully",
+      data: limits,
+    });
+  } catch (error) {
+    console.error("❌ Save daily limits error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save daily limits",
+    });
+  }
+});
+
 // ===== MESSAGE STRATEGY =====
 
-// Get message strategy
-router.get("/message-strategy", async (req, res) => {
+// Get message strategy for current user
+router.get("/message-strategy", identifyCurrentUser, async (req, res) => {
   try {
-    let strategy = await MessageStrategy.findOne();
+    const userId = req.user.userId;
+    console.log(`💬 Getting message strategy for user: ${userId}`);
+
+    let strategy = await MessageStrategy.findOne({ userId: userId });
 
     if (!strategy) {
-      // Create default strategy
+      // Create default strategy for this specific user
       strategy = new MessageStrategy({
+        userId: userId,
+        username: req.user.username,
         mode: "mixed",
         directMessageChance: 30,
       });
       await strategy.save();
+      console.log(`✅ Created default message strategy for user: ${userId}`);
     }
 
     res.json({
@@ -965,9 +1054,10 @@ router.get("/message-strategy", async (req, res) => {
   }
 });
 
-// Update message strategy
+// Update message strategy for current user
 router.put(
   "/message-strategy",
+  identifyCurrentUser,
   [
     body("mode")
       .optional()
@@ -997,13 +1087,28 @@ router.put(
         });
       }
 
+      const userId = req.user.userId;
       const updateData = req.body;
 
+      console.log(
+        `💾 Updating message strategy for user: ${userId}`,
+        updateData,
+      );
+
+      // Update strategy for specific user only
       const strategy = await MessageStrategy.findOneAndUpdate(
-        {},
-        { $set: updateData },
+        { userId: userId },
+        {
+          $set: {
+            ...updateData,
+            userId: userId,
+            username: req.user.username,
+          },
+        },
         { new: true, upsert: true },
       );
+
+      console.log(`✅ Updated message strategy for user: ${userId}`, strategy);
 
       res.json({
         success: true,
@@ -1020,16 +1125,58 @@ router.put(
   },
 );
 
+// POST method for message strategy (frontend compatibility)
+router.post("/message-strategy", identifyCurrentUser, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const updateData = req.body;
+
+    console.log(`💾 Saving message strategy for user: ${userId}`, updateData);
+
+    // Update strategy for specific user only
+    const strategy = await MessageStrategy.findOneAndUpdate(
+      { userId: userId },
+      {
+        $set: {
+          ...updateData,
+          userId: userId,
+          username: req.user.username,
+        },
+      },
+      { new: true, upsert: true },
+    );
+
+    console.log(`✅ Saved message strategy for user: ${userId}`, strategy);
+
+    res.json({
+      success: true,
+      message: "Message strategy saved successfully",
+      data: strategy,
+    });
+  } catch (error) {
+    console.error("❌ Save message strategy error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save message strategy",
+    });
+  }
+});
+
 // ===== WARMUP SETTINGS =====
 
 // Get warmup settings
-router.get("/warmup", async (req, res) => {
+router.get("/warmup", identifyCurrentUser, async (req, res) => {
   try {
-    let warmup = await WarmupSettings.findOne();
+    const userId = req.user.userId;
+    console.log(`🔥 Getting warmup settings for user: ${userId}`);
+
+    let warmup = await WarmupSettings.findOne({ userId: userId });
 
     if (!warmup) {
-      // Create default warmup settings
+      // Create default warmup settings for this specific user
       warmup = new WarmupSettings({
+        userId: userId,
+        username: req.user.username,
         enabled: true,
         phase: "auto",
       });
@@ -1098,25 +1245,52 @@ router.put(
 
 // ===== BULK SETTINGS =====
 
-// Get all settings
-router.get("/all", async (req, res) => {
+// Get all settings for current user
+router.get("/all", identifyCurrentUser, async (req, res) => {
   try {
+    const userId = req.user.userId;
+    console.log(`📊 Getting all settings for user: ${userId}`);
+
     const [keywords, limits, messageStrategy, warmupSettings] =
       await Promise.all([
-        SearchKeyword.find({ status: "active" }).sort({ createdAt: -1 }),
-        DailyLimits.findOne(),
-        MessageStrategy.findOne(),
-        WarmupSettings.findOne(),
+        SearchKeyword.find({ userId: userId, status: "active" }).sort({
+          createdAt: -1,
+        }),
+        DailyLimits.findOne({ userId: userId }),
+        MessageStrategy.findOne({ userId: userId }),
+        WarmupSettings.findOne({ userId: userId }),
       ]);
+
+    // Create defaults if not found
+    let finalLimits = limits;
+    if (!finalLimits) {
+      finalLimits = {
+        maxConnections: 8,
+        maxDirectMessages: 3,
+        maxProfileViews: 50,
+        maxSearches: 10,
+      };
+    }
+
+    let finalMessageStrategy = messageStrategy;
+    if (!finalMessageStrategy) {
+      finalMessageStrategy = {
+        mode: "mixed",
+        directMessageChance: 30,
+      };
+    }
 
     res.json({
       success: true,
       data: {
         keywords,
-        limits,
-        messageStrategy,
+        limits: finalLimits,
+        messageStrategy: finalMessageStrategy,
         warmupSettings,
-        licenseInfo: req.licenseInfo,
+        userInfo: {
+          userId: userId,
+          username: req.user.username,
+        },
       },
     });
   } catch (error) {
@@ -1124,6 +1298,79 @@ router.get("/all", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to get settings",
+    });
+  }
+});
+
+// Save all settings for current user (POST endpoint for frontend compatibility)
+router.post("/save", identifyCurrentUser, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const {
+      messageMode,
+      directMessageChance,
+      selectedKeywords,
+      dailyLimits,
+      warmup,
+    } = req.body;
+
+    console.log(`💾 Saving all settings for user: ${userId}`, req.body);
+
+    // Update message strategy
+    if (messageMode || directMessageChance) {
+      await MessageStrategy.findOneAndUpdate(
+        { userId: userId },
+        {
+          $set: {
+            userId: userId,
+            username: req.user.username,
+            mode: messageMode || "mixed",
+            directMessageChance: directMessageChance || 30,
+          },
+        },
+        { new: true, upsert: true },
+      );
+    }
+
+    // Update daily limits
+    if (dailyLimits) {
+      await DailyLimits.findOneAndUpdate(
+        { userId: userId },
+        {
+          $set: {
+            userId: userId,
+            username: req.user.username,
+            ...dailyLimits,
+          },
+        },
+        { new: true, upsert: true },
+      );
+    }
+
+    // Update keyword selection
+    if (selectedKeywords && Array.isArray(selectedKeywords)) {
+      await SearchKeyword.updateMany(
+        { userId: userId },
+        { $set: { status: "inactive" } },
+      );
+
+      for (const keywordId of selectedKeywords) {
+        await SearchKeyword.findOneAndUpdate(
+          { userId: userId, _id: keywordId },
+          { $set: { status: "active" } },
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Settings saved successfully",
+    });
+  } catch (error) {
+    console.error("❌ Save all settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save settings",
     });
   }
 });

@@ -8,6 +8,16 @@ const mongoose = require("mongoose");
 
 const ActivityLogSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      default: "default",
+    },
+    username: {
+      type: String,
+      required: false,
+      default: "Default User",
+    },
     actionType: {
       type: String,
       enum: [
@@ -20,6 +30,10 @@ const ActivityLogSchema = new mongoose.Schema(
       required: true,
     },
     targetProfile: {
+      type: String,
+      required: true,
+    },
+    profileUrl: {
       type: String,
       required: true,
     },
@@ -60,14 +74,16 @@ const ActivityLogSchema = new mongoose.Schema(
 ActivityLogSchema.index({ timestamp: -1 });
 ActivityLogSchema.index({ actionType: 1, success: 1 });
 ActivityLogSchema.index({ searchKeyword: 1 });
+ActivityLogSchema.index({ userId: 1 });
 
 // Static methods
-ActivityLogSchema.statics.getTodayLogs = function () {
+ActivityLogSchema.statics.getTodayLogs = function (userId = "default") {
   const today = new Date();
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
   const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
   return this.find({
+    userId: userId,
     timestamp: {
       $gte: startOfDay,
       $lte: endOfDay,
@@ -77,12 +93,14 @@ ActivityLogSchema.statics.getTodayLogs = function () {
 
 ActivityLogSchema.statics.getSuccessfulActions = function (
   actionType,
+  userId = "default",
   date = new Date(),
 ) {
   const startOfDay = new Date(date.setHours(0, 0, 0, 0));
   const endOfDay = new Date(date.setHours(23, 59, 59, 999));
 
   return this.countDocuments({
+    userId: userId,
     actionType: actionType,
     success: true,
     timestamp: {
@@ -92,12 +110,13 @@ ActivityLogSchema.statics.getSuccessfulActions = function (
   });
 };
 
-ActivityLogSchema.statics.getTodayUsage = async function () {
+ActivityLogSchema.statics.getTodayUsage = async function (userId = "default") {
   const today = new Date();
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
   const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
   const logs = await this.find({
+    userId: userId,
     success: true,
     timestamp: {
       $gte: startOfDay,

@@ -8,13 +8,23 @@ const mongoose = require("mongoose");
 
 const WarmupSettingsSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      default: "default",
+    },
+    username: {
+      type: String,
+      required: false,
+      default: "Default User",
+    },
     enabled: {
       type: Boolean,
       default: true,
     },
     overrideWarmup: {
       type: Boolean,
-        default: true,
+      default: true,
     },
     phase: {
       type: String,

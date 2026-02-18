@@ -8,6 +8,15 @@ const mongoose = require("mongoose");
 
 const MessageStrategySchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      index: true, // Index for faster queries
+    },
+    username: {
+      type: String,
+      required: false,
+    },
     mode: {
       type: String,
       enum: ["connection", "direct", "mixed", "connect_only", "direct_only"],

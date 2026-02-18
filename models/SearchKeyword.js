@@ -8,11 +8,20 @@ const mongoose = require("mongoose");
 
 const SearchKeywordSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      index: true, // Index for faster queries
+    },
+    username: {
+      type: String,
+      required: false,
+    },
     keyword: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
+      // Remove unique constraint as multiple users can have same keywords
     },
     subject: {
       type: String,
@@ -155,6 +164,9 @@ SearchKeywordSchema.methods.toggleStatus = function () {
   this.status = this.status === "active" ? "inactive" : "active";
   return this.save();
 };
+
+// Create compound unique index for userId + keyword combination
+SearchKeywordSchema.index({ userId: 1, keyword: 1 }, { unique: true });
 
 const SearchKeyword = mongoose.model("SearchKeyword", SearchKeywordSchema);
 

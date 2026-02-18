@@ -1,9 +1,16 @@
-
-
 const mongoose = require("mongoose");
 
 const DailyLimitsSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      required: true,
+      index: true, // Index for faster queries
+    },
+    username: {
+      type: String,
+      required: false,
+    },
     maxConnections: {
       type: Number,
       default: 8,
