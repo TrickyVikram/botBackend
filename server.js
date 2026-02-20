@@ -46,9 +46,15 @@ const PORT = process.env.PORT || 5002;
 let botService;
 let licenseService;
 
+const allowedOrigins = [
+  "https://botforntend.onrender.com",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
 const io = socketIo(server, {
   cors: {
-    origin: true, // Allow all origins
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -99,7 +105,7 @@ app.use(compression());
 // Enhanced CORS - Allow All Origins
 app.use(
   cors({
-    origin: true, // Allow all origins
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
