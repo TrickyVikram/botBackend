@@ -50,7 +50,7 @@ const allowedOrigins = [
 
 const io = socketIo(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: true,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -101,7 +101,7 @@ app.use(compression());
 // Enhanced CORS - Allow All Origins
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
@@ -119,6 +119,7 @@ app.use(
     exposedHeaders: ["X-Total-Count", "X-Auth-Token"],
   }),
 );
+// Rate limiting - INCREASED LIMITS FOR TESTING
 
 // Rate limiting - INCREASED LIMITS FOR TESTING
 const limiter = rateLimit({
