@@ -1,8 +1,4 @@
-/**
- * LINKEDIN BOT DASHBOARD API SERVER
- *
- * Complete backend API with license verification and database integration
- */
+
 
 require("dotenv").config();
 const express = require("express");
