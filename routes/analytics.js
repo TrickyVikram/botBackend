@@ -19,9 +19,7 @@ router.get("/test-data", async (req, res) => {
     const totalActivities = await ActivityLog.countDocuments();
 
     // Get recent activities
-    const recentActivities = await ActivityLog.find({})
-      .sort({ timestamp: -1 })
-      .limit(10);
+    const recentActivities = await ActivityLog.find({}).sort({ timestamp: -1 });
 
     // Get activity type summary
     const activityTypes = await ActivityLog.aggregate([
@@ -196,7 +194,7 @@ router.get("/dashboard", async (req, res) => {
         dailyStats: Object.values(dailyStats).sort(
           (a, b) => new Date(a.date) - new Date(b.date),
         ),
-        recentActivities: activities.slice(0, 10),
+        recentActivities: activities,
         recentSessions: sessions.slice(0, 5),
       },
     });
@@ -555,6 +553,159 @@ router.get("/export", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Data export failed",
+    });
+  }
+});
+
+// New public endpoint: Get ALL analytics data in JSON format
+router.get("/all", async (req, res) => {
+  try {
+    console.log("🔍 Fetching ALL analytics data...");
+
+    // Get total count of activities
+    const totalActivities = await ActivityLog.countDocuments();
+    
+    // Get ALL activities (no limit)
+    const allActivities = await ActivityLog.find({})
+      .sort({ timestamp: -1 })
+      .lean(); // Using lean() for better performance
+
+    // Get activity type summary
+    const activityTypes = await ActivityLog.aggregate([
+      {
+        $group: {
+          _id: "$actionType",
+          count: { $sum: 1 },
+          successCount: {
+            $sum: { $cond: [{ $eq: ["$success", true] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    // Get daily activity counts for last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const dailyActivities = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+          },
+          count: { $sum: 1 },
+          successCount: {
+            $sum: { $cond: [{ $eq: ["$success", true] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Get weekly summary
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weeklyActivities = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: "$actionType",
+          count: { $sum: 1 },
+          successCount: {
+            $sum: { $cond: [{ $eq: ["$success", true] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    // Get monthly summary  
+    const monthlyActivities = await ActivityLog.aggregate([
+      { $match: { timestamp: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: "$actionType",
+          count: { $sum: 1 },
+          successCount: {
+            $sum: { $cond: [{ $eq: ["$success", true] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    // Calculate success rates
+    const totalSuccessful = activityTypes.reduce((sum, type) => sum + type.successCount, 0);
+    const overallSuccessRate = totalActivities > 0 ? Math.round((totalSuccessful / totalActivities) * 100) : 0;
+
+    // Response with ALL data
+    const response = {
+      success: true,
+      message: "Complete analytics data retrieved successfully",
+      timestamp: new Date().toISOString(),
+      data: {
+        // Summary stats
+        summary: {
+          totalActivities,
+          overallSuccessRate,
+          totalSuccessful,
+          totalFailed: totalActivities - totalSuccessful,
+          dataRange: {
+            oldest: allActivities.length > 0 ? allActivities[allActivities.length - 1].timestamp : null,
+            newest: allActivities.length > 0 ? allActivities[0].timestamp : null,
+          }
+        },
+
+        // All activities with proper field mapping
+        activities: allActivities.map((activity) => ({
+          id: activity._id,
+          type: activity.actionType,
+          target: activity.targetProfile,
+          keyword: activity.searchKeyword,
+          success: activity.success,
+          timestamp: activity.timestamp,
+          message: activity.message || "",
+          subject: activity.subject || "",
+          metadata: activity.metadata || {},
+          createdAt: activity.createdAt,
+          updatedAt: activity.updatedAt,
+          __v: activity.__v,
+        })),
+
+        // Activity type breakdowns
+        activityTypes: {
+          overall: activityTypes,
+          weekly: weeklyActivities,
+          monthly: monthlyActivities,
+        },
+
+        // Daily activity trends
+        dailyActivities,
+
+        // Additional analytics
+        insights: {
+          mostActiveDay: dailyActivities.length > 0 
+            ? dailyActivities.reduce((max, day) => day.count > max.count ? day : max, dailyActivities[0])
+            : null,
+          
+          topPerformingType: activityTypes.length > 0
+            ? activityTypes.reduce((max, type) => 
+                (type.successCount / type.count) > (max.successCount / max.count) ? type : max, 
+                activityTypes[0]
+              )
+            : null,
+            
+          recentTrend: allActivities.slice(0, 10).length, // Last 10 activities count
+        }
+      }
+    };
+
+    console.log(`✅ Successfully retrieved ${totalActivities} activities with complete analytics`);
+    res.json(response);
+
+  } catch (error) {
+    console.error("❌ All analytics data error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get complete analytics data",
+      error: error.message,
+      timestamp: new Date().toISOString(),
     });
   }
 });
